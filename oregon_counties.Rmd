@@ -1,0 +1,141 @@
+---
+title: "Loading in Oregon County Data"
+author: "Ted Laderas"
+date: "April 1, 2019"
+output: html_document
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(sf)
+library(leaflet)
+library(dplyr)
+library(ggplot2)
+
+counties <- st_read("data/OREGON_COUNTY.shp")
+counties <- st_transform(counties, crs = 4326)
+
+county_small <- counties %>% as_tibble() %>% select(contains("THEME"), -geometry)
+
+```
+
+
+```{r}
+#bins <- c(1, 200, 600, 1000, 2000, 5000, Inf)
+pal <- colorBin("YlOrRd", domain = counties$SPL_THEMES,bins = 7)
+
+dat <- counties$SPL_THEMES
+
+cols <- pal(dat)
+
+counties %>% leaflet() %>% 
+  addPolygons(fillColor = cols, weight = 2,
+    opacity = 1,
+    color = "white",
+    dashArray = "3", 
+#    label = labels,
+    fillOpacity = 0.5) %>% 
+  addTiles()
+
+
+```
+
+```{r}
+#shiny app code adapted from
+#https://github.com/rstudio/shiny-examples/blob/master/063-superzip-example/server.R
+
+library(shiny)
+library(leaflet)
+library(sf)
+library(viridis)
+library(RColorBrewer)
+library(scales)
+
+var_choices <- colnames(county_small)
+
+ui <- fluidPage(
+  
+  titlePanel("Oregon Counties by SVI"),
+    leafletOutput("map"),
+    absolutePanel( id = "controls", 
+                   class = "panel panel-default", fixed = TRUE,
+                   draggable = TRUE, top = 60, left = "auto", 
+                   right = 20, bottom = "auto",
+                   width = 330, height = "auto",
+      selectInput(inputId = "var", 
+                  label = "Select Variable in Data",
+                  choices = var_choices, selected = var_choices[1]),
+      plotOutput("variable_histogram")
+      )
+)
+
+server <- function(input, output) {
+  
+  output$map <- renderLeaflet({
+    
+  #var_selected <- "F_THEME1"
+    #data_selected <- counties[[var_selected]]
+    #pal <- colorBin("viridis", data_selected, 7, pretty = FALSE)
+    #col_pal <- pal(data_selected)
+    
+    counties %>% leaflet() %>%
+      addTiles() %>%
+      setView(lng = -120, lat = 43, zoom = 5)
+  })
+  
+  output$variable_histogram <- renderPlot({
+    var_name <- input$var
+    counties %>% ggplot(aes_string(x=var_name)) +
+      geom_histogram() 
+    
+  })
+  
+  #build tooltips
+  
+  tooltip_fields <- c("LOCATION", "AREA_SQMI", "E_TOTPOP", var_choices)
+  
+  
+  #observer for chloropleth coloring
+  observe({
+    var_selected <- input$var
+    data_selected <- counties[[var_selected]]
+    
+    unique_vals <- length(unique(data_selected))
+    
+    break_num <- 7
+    
+    if(unique_vals < length(data_selected)/2) {
+      break_num <- unique_vals
+    }
+    
+    pal <- colorBin("viridis", data_selected, break_num, pretty = FALSE)
+    col_pal <- pal(data_selected)
+    
+    
+    leafletProxy("map") %>%
+      addPolygons(fillColor = col_pal, weight = 2,
+    opacity = 1,
+    color = "white",
+    dashArray = "3", 
+    fillOpacity = 0.5, data=counties) %>%
+      addLegend("bottomleft", pal=pal, 
+                values=data_selected, title=var_selected,
+                layerId="colorLegend")
+    
+  })
+  
+  #observer for clicking - 
+  #show where clicked county is on histogram
+  
+  #observe({
+    
+    
+  #})
+
+}
+
+shinyApp(ui=ui, server=server)
+
+```
+
