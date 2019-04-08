@@ -16,7 +16,7 @@ library(ggplot2)
 counties <- st_read("data/OREGON_COUNTY.shp")
 counties <- st_transform(counties, crs = 4326)
 
-county_small <- counties %>% as_tibble() %>% select(contains("THEME"), -geometry)
+county_small <- counties %>% as_tibble() %>% select(contains("RPL_THEME"), -geometry)
 
 ```
 
@@ -53,6 +53,25 @@ library(RColorBrewer)
 library(scales)
 
 var_choices <- colnames(county_small)
+tooltip_fields <- c("LOCATION", "AREA_SQMI", "E_TOTPOP", var_choices)
+
+dat_list <- counties %>% 
+  as_tibble() %>% 
+  select(one_of(tooltip_fields), -geometry)  %>% 
+  purrr::pmap(list) 
+    
+html_list <-  function(x){
+    out_list <- lapply(names(x), 
+                           function(y){
+                             return(
+                               paste0("<b>",y, "</b> :",
+                                      as.character(x[[y]]), "<br>"))})
+    out <- paste(out_list, collapse = " ")
+    return(shiny::HTML(out))
+  }
+
+labels_html <- lapply(dat_list, html_list)
+
 
 ui <- fluidPage(
   
@@ -93,7 +112,6 @@ server <- function(input, output) {
   
   #build tooltips
   
-  tooltip_fields <- c("LOCATION", "AREA_SQMI", "E_TOTPOP", var_choices)
   
   
   #observer for chloropleth coloring
@@ -117,6 +135,7 @@ server <- function(input, output) {
       addPolygons(fillColor = col_pal, weight = 2,
     opacity = 1,
     color = "white",
+    label = labels_html,
     dashArray = "3", 
     fillOpacity = 0.5, data=counties) %>%
       addLegend("bottomleft", pal=pal, 
